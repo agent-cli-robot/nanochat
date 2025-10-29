@@ -55,16 +55,25 @@ source "$HOME/.cargo/env"
 # Build the rustbpe Tokenizer
 uv run maturin develop --release --manifest-path rustbpe/Cargo.toml
 
-# Download the first ~2B characters of pretraining dataset
-# look at dev/repackage_data_reference.py for details on how this data was prepared
-# each data shard is ~250M chars
-# so we download 2e9 / 250e6 = 8 data shards at this point
-# each shard is ~100MB of text (compressed), so this is about ~800MB of data on disk
-python -m nanochat.dataset -n 8
-# Immediately also kick off downloading more shards in the background while tokenizer trains
-# See comment below for why 240 is the right number here
-python -m nanochat.dataset -n 240 &
-DATASET_DOWNLOAD_PID=$!
+# Download the first ~2B characters of pretraining dataset (if none exist yet)
+# If you want to use an alternative HF dataset, you can pre-populate $NANOCHAT_BASE_DIR/base_data
+# using: `python -m nanochat.dataset hf --preset k12` (or `--preset opc`) before running this script.
+BASE_DATA_DIR="$NANOCHAT_BASE_DIR/base_data"
+mkdir -p "$BASE_DATA_DIR"
+DATASET_DOWNLOAD_PID=""
+if [ -z "$(ls -A "$BASE_DATA_DIR" 2>/dev/null)" ]; then
+    # look at dev/repackage_data_reference.py for details on how this data was prepared
+    # each data shard is ~250M chars
+    # so we download 2e9 / 250e6 = 8 data shards at this point
+    # each shard is ~100MB of text (compressed), so this is about ~800MB of data on disk
+    python -m nanochat.dataset fineweb -n 8
+    # Immediately also kick off downloading more shards in the background while tokenizer trains
+    # See comment below for why 240 is the right number here
+    python -m nanochat.dataset fineweb -n 240 &
+    DATASET_DOWNLOAD_PID=$!
+else
+    echo "Found existing shards in $BASE_DATA_DIR; skipping FineWeb download."
+fi
 # train the tokenizer with vocab size 2**16 = 65536 on ~2B characters of data
 python -m scripts.tok_train --max_chars=2000000000
 # evaluate the tokenizer (report compression ratio etc.)
@@ -88,8 +97,10 @@ fi
 # At 250M chars/shard, this is 54B / 250M ~= 216 shards needed for pretraining.
 # Round up to 240 for safety. At ~100MB/shard, this downloads ~24GB of data to disk.
 # (The total number of shards available in the entire dataset is 1822.)
-echo "Waiting for dataset download to complete..."
-wait $DATASET_DOWNLOAD_PID
+if [ -n "$DATASET_DOWNLOAD_PID" ]; then
+    echo "Waiting for dataset download to complete..."
+    wait $DATASET_DOWNLOAD_PID
+fi
 
 # pretrain the d20 model
 torchrun --standalone --nproc_per_node=8 -m scripts.base_train -- --depth=20 --run=$WANDB_RUN

@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  trainer:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: nanochat:train
+    container_name: nanochat-trainer
+    environment:
+      - NANOCHAT_BASE_DIR=/root/.cache/nanochat
+      # Optional: set a wandb run name or leave as 'dummy' to skip
+      # - WANDB_RUN=d20
+    volumes:
+      - nanochat_cache:/root/.cache/nanochat
+    # Allocate all GPUs for training; comment for CPU-only experiments
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    shm_size: 1g
+    # Expose nothing; training doesn't serve a port
+    command: bash -lc "bash speedrun.sh"
+
+volumes:
+  nanochat_cache:

@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: nanochat:web
+    container_name: nanochat-web
+    ports:
+      - "8000:8000"
+    environment:
+      - NANOCHAT_BASE_DIR=/root/.cache/nanochat
+      # Select model source: sft|mid|rl (defaults to sft)
+      # - MODEL_SOURCE=sft
+      # Optionally pick a specific model tag (e.g., d20, d26, d32)
+      # - MODEL_TAG=d32
+      # Optionally pick a specific step
+      # - MODEL_STEP=12345
+    volumes:
+      - nanochat_cache:/root/.cache/nanochat
+    # Enable GPU if available (comment out for CPU-only)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    shm_size: 1g
+    command: >
+      uv run python -m scripts.chat_web
+      --host 0.0.0.0 --port 8000
+      ${MODEL_SOURCE:+-i ${MODEL_SOURCE}}
+      ${MODEL_TAG:+-g ${MODEL_TAG}}
+      ${MODEL_STEP:+-s ${MODEL_STEP}}
+
+volumes:
+  nanochat_cache:
