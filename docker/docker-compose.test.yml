@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  trainer:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: nanochat:train
+    container_name: nanochat-trainer-test
+    environment:
+      - NANOCHAT_BASE_DIR=/root/.cache/nanochat
+      # Optional: enable Weights & Biases logging by setting a run tag
+      # - WANDB_RUN=test-d20
+    volumes:
+      - nanochat_cache:/root/.cache/nanochat
+    # Reserve exactly 4 GPUs for this test run
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 4
+              capabilities: [gpu]
+    shm_size: 1g
+    # Use a 4-GPU/K-12 aware script instead of the default speedrun
+    command: bash -lc "bash scripts/speedrun_4gpu_k12.sh"
+
+volumes:
+  nanochat_cache:
+
